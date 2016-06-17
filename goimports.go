@@ -5,7 +5,7 @@
 package main
 
 import (
-	"bytes"
+  "bytes"
 	"flag"
 	"fmt"
 	"go/scanner"
@@ -16,8 +16,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+  "go/parser"
+  "go/token"
+  "strconv"
 
-	"golang.org/x/tools/imports"
+  "golang.org/x/tools/go/ast/astutil"
 )
 
 var (
@@ -26,17 +29,10 @@ var (
 	write  = flag.Bool("w", false, "write result to (source) file instead of stdout")
 	doDiff = flag.Bool("d", false, "display diffs instead of rewriting files")
 
-	options = &imports.Options{
-		TabWidth:  8,
-		TabIndent: true,
-		Comments:  true,
-		Fragment:  true,
-	}
 	exitCode = 0
 )
 
 func init() {
-	flag.BoolVar(&options.AllErrors, "e", false, "report all errors (not just the first 10 on different lines)")
 }
 
 func report(err error) {
@@ -57,13 +53,6 @@ func isGoFile(f os.FileInfo) bool {
 }
 
 func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error {
-	opt := options
-	if stdin {
-		nopt := *options
-		nopt.Fragment = true
-		opt = &nopt
-	}
-
 	if in == nil {
 		f, err := os.Open(filename)
 		if err != nil {
@@ -78,7 +67,7 @@ func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error
 		return err
 	}
 
-	res, err := imports.Process(filename, src, opt)
+	res, err := processFileImpl(filename, src)
 	if err != nil {
 		return err
 	}
@@ -139,12 +128,6 @@ func gofmtMain() {
 	flag.Usage = usage
 	flag.Parse()
 
-	if options.TabWidth < 0 {
-		fmt.Fprintf(os.Stderr, "negative tabwidth %d\n", options.TabWidth)
-		exitCode = 2
-		return
-	}
-
 	if flag.NArg() == 0 {
 		if err := processFile("<standard input>", os.Stdin, os.Stdout, true); err != nil {
 			report(err)
@@ -192,4 +175,47 @@ func diff(b1, b2 []byte) (data []byte, err error) {
 		err = nil
 	}
 	return
+}
+
+func processFileImpl(filename string, src []byte) ([]byte, error) {
+fmt.Printf("Process %v  %v bytes \n", filename, len(src))
+
+	fileSet := token.NewFileSet()
+
+  parserMode := parser.Mode(0)
+  parserMode |= parser.ParseComments
+
+  file, err := parser.ParseFile(fileSet, filename, src, parserMode)
+	if err != nil {
+		return nil, err
+	}
+
+	imps := astutil.Imports(fileSet, file)
+
+	for _, impSection := range imps {
+		for _, importSpec := range impSection {
+			importPath, _ := strconv.Unquote(importSpec.Path.Value)
+			fmt.Printf("import '%v'  ", importPath)
+
+      if importSpec.Name != nil {
+        fmt.Printf(" name='%v'", importSpec.Name.Name)
+      }
+
+      if importSpec.Comment != nil {
+        fmt.Printf(" comment='%v'", strings.TrimSpace(importSpec.Comment.Text()))
+      }
+
+      fmt.Println()
+
+			p1 := fileSet.Position(importSpec.Path.Pos())
+			p2 := fileSet.Position(importSpec.Path.End())
+			fmt.Printf("> '%v' @%v ..", p1.String(), p1.Offset)
+			fmt.Printf(" '%v' @%v ..", p2.String(), p2.Offset)
+			fmt.Printf(" '%v' \n", string(src[p1.Offset:p2.Offset]))
+
+		}
+
+	}
+
+	return src, nil
 }
