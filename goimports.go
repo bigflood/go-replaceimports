@@ -7,10 +7,10 @@ package main
 import (
   "bytes"
 	"flag"
-	"fmt"
+  "fmt"
 	"go/scanner"
 	"io"
-	"io/ioutil"
+  "io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +27,9 @@ var (
 	// main operation modes
 	list   = flag.Bool("l", false, "list files whose formatting differs from goimport's")
 	write  = flag.Bool("w", false, "write result to (source) file instead of stdout")
-	doDiff = flag.Bool("d", false, "display diffs instead of rewriting files")
+  doDiff = flag.Bool("d", false, "display diffs instead of rewriting files")
+  importPath1 = flag.String("f", "", "import path to find")
+	importPath2 = flag.String("r", "", "import path to replace with")
 
 	exitCode = 0
 )
@@ -84,9 +86,9 @@ func processFile(filename string, in io.Reader, out io.Writer, stdin bool) error
 			}
 		}
 		if *doDiff {
-			data, err := diff(src, res)
-			if err != nil {
-				return fmt.Errorf("computing diff: %s", err)
+			data, e := diff(src, res)
+			if e != nil {
+				return fmt.Errorf("computing diff: %s", e)
 			}
 			fmt.Printf("diff %s gofmt/%s\n", filename, filename)
 			out.Write(data)
@@ -192,30 +194,48 @@ fmt.Printf("Process %v  %v bytes \n", filename, len(src))
 
 	imps := astutil.Imports(fileSet, file)
 
+  type Found struct {
+    offset1, offset2 int
+  }
+
+  founds := make([]Found, 0, 16)
+
 	for _, impSection := range imps {
 		for _, importSpec := range impSection {
-			importPath, _ := strconv.Unquote(importSpec.Path.Value)
-			fmt.Printf("import '%v'  ", importPath)
-
-      if importSpec.Name != nil {
-        fmt.Printf(" name='%v'", importSpec.Name.Name)
+			path, _ := strconv.Unquote(importSpec.Path.Value)
+      if path != *importPath1 {
+        continue
       }
-
-      if importSpec.Comment != nil {
-        fmt.Printf(" comment='%v'", strings.TrimSpace(importSpec.Comment.Text()))
-      }
-
-      fmt.Println()
 
 			p1 := fileSet.Position(importSpec.Path.Pos())
 			p2 := fileSet.Position(importSpec.Path.End())
-			fmt.Printf("> '%v' @%v ..", p1.String(), p1.Offset)
-			fmt.Printf(" '%v' @%v ..", p2.String(), p2.Offset)
-			fmt.Printf(" '%v' \n", string(src[p1.Offset:p2.Offset]))
 
+      f := Found{offset1:p1.Offset, offset2:p2.Offset}
+      founds = append(founds, f)
 		}
-
 	}
 
-	return src, nil
-}
+  if len(founds) > 0 {
+    path2 := ([]byte)(fmt.Sprintf("\"%v\"", *importPath2))
+
+    buf := &bytes.Buffer{}
+
+    index := 0
+
+    for _, f := range(founds) {
+      if index < f.offset1 {
+        buf.Write(src[index:f.offset1])
+      }
+
+      buf.Write(path2)
+
+      index = f.offset2
+    }
+
+    buf.Write(src[index:])
+
+	   return buf.Bytes(), nil
+   }
+
+   return src, nil
+ }
