@@ -17,6 +17,7 @@ import (
   "go/token"
   "strconv"
   "./internal/utils"
+  "strings"
 
   "golang.org/x/tools/go/ast/astutil"
 )
@@ -146,6 +147,8 @@ func processFindAndReplace(filename string, src []byte) ([]byte, error) {
   return processFileImpl(filename, src, func(path1 string) string {
     if path1 == *importPath1 {
       return *importPath2
+    } else if strings.HasPrefix(path1, *importPath1 + "/") {
+      return *importPath2 + path1[len(*importPath1):]
     }
     return ""
   })
