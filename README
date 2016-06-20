@@ -1,5 +1,7 @@
-GO replace import pathes
+GO tool - replaces import pathes
 
-
+  
+  
+  
 fork of "https://github.com/bradfitz/goimports"
 
