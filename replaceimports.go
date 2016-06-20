@@ -24,7 +24,7 @@ import (
 
 var (
 	// main operation modes
-	list        = flag.Bool("l", false, "list files whose formatting differs from goimport's")
+	list        = flag.Bool("l", false, "list files whose formatting differs from replaceimports's")
 	write       = flag.Bool("w", false, "write result to (source) file instead of stdout")
 	doDiff      = flag.Bool("d", false, "display diffs instead of rewriting files")
 	importPath1 = flag.String("f", "", "import path to find")
@@ -42,7 +42,7 @@ func report(err error) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: goimports [flags] [path ...]\n")
+	fmt.Fprintf(os.Stderr, "usage: replaceimports [flags] [path ...]\n")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
