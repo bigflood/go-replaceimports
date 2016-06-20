@@ -5,29 +5,29 @@
 package main
 
 import (
-  "bytes"
+	"./internal/utils"
+	"bytes"
 	"flag"
-  "fmt"
+	"fmt"
+	"go/parser"
 	"go/scanner"
+	"go/token"
 	"io"
-  "io/ioutil"
+	"io/ioutil"
 	"os"
 	"runtime"
-  "go/parser"
-  "go/token"
-  "strconv"
-  "./internal/utils"
-  "strings"
+	"strconv"
+	"strings"
 
-  "golang.org/x/tools/go/ast/astutil"
+	"golang.org/x/tools/go/ast/astutil"
 )
 
 var (
 	// main operation modes
-	list   = flag.Bool("l", false, "list files whose formatting differs from goimport's")
-	write  = flag.Bool("w", false, "write result to (source) file instead of stdout")
-  doDiff = flag.Bool("d", false, "display diffs instead of rewriting files")
-  importPath1 = flag.String("f", "", "import path to find")
+	list        = flag.Bool("l", false, "list files whose formatting differs from goimport's")
+	write       = flag.Bool("w", false, "write result to (source) file instead of stdout")
+	doDiff      = flag.Bool("d", false, "display diffs instead of rewriting files")
+	importPath1 = flag.String("f", "", "import path to find")
 	importPath2 = flag.String("r", "", "import path to replace with")
 
 	exitCode = 0
@@ -132,88 +132,87 @@ func gofmtMain() {
 }
 
 func walkDir(path string) {
-  utils.ForEachGoFilesInDir(path, func(filePath string, err error) {
-    if err == nil {
-      err = processFile(filePath, nil, os.Stdout, false)
-    }
-    if err != nil {
-      report(err)
-    }
-  })
+	utils.ForEachGoFilesInDir(path, func(filePath string, err error) {
+		if err == nil {
+			err = processFile(filePath, nil, os.Stdout, false)
+		}
+		if err != nil {
+			report(err)
+		}
+	})
 }
 
 func processFindAndReplace(filename string, src []byte) ([]byte, error) {
 
-  return processFileImpl(filename, src, func(path1 string) string {
-    if path1 == *importPath1 {
-      return *importPath2
-    } else if strings.HasPrefix(path1, *importPath1 + "/") {
-      return *importPath2 + path1[len(*importPath1):]
-    }
-    return ""
-  })
+	return processFileImpl(filename, src, func(path1 string) string {
+		if path1 == *importPath1 {
+			return *importPath2
+		} else if strings.HasPrefix(path1, *importPath1+"/") {
+			return *importPath2 + path1[len(*importPath1):]
+		}
+		return ""
+	})
 
 }
 
-
-func processFileImpl(filename string, src []byte, f func (string)string) ([]byte, error) {
+func processFileImpl(filename string, src []byte, f func(string) string) ([]byte, error) {
 
 	//fmt.Printf("Process %v  %v bytes \n", filename, len(src))
 
 	fileSet := token.NewFileSet()
 
-  parserMode := parser.Mode(0)
-  parserMode |= parser.ParseComments
+	parserMode := parser.Mode(0)
+	parserMode |= parser.ParseComments
 
- file, err := parser.ParseFile(fileSet, filename, src, parserMode)
+	file, err := parser.ParseFile(fileSet, filename, src, parserMode)
 	if err != nil {
 		return nil, err
 	}
 
 	imps := astutil.Imports(fileSet, file)
 
- type Found struct {
-   offset1, offset2 int
-		path2 []byte
- }
+	type Found struct {
+		offset1, offset2 int
+		path2            []byte
+	}
 
- founds := make([]Found, 0, 16)
+	founds := make([]Found, 0, 16)
 
 	for _, impSection := range imps {
 		for _, importSpec := range impSection {
 			path, _ := strconv.Unquote(importSpec.Path.Value)
 			path2 := f(path)
-     if path2 == "" {
-       continue
-     }
+			if path2 == "" {
+				continue
+			}
 
 			p1 := fileSet.Position(importSpec.Path.Pos())
 			p2 := fileSet.Position(importSpec.Path.End())
 
-     f := Found{offset1:p1.Offset, offset2:p2.Offset, path2:([]byte)(path2) }
-     founds = append(founds, f)
+			f := Found{offset1: p1.Offset, offset2: p2.Offset, path2: ([]byte)(fmt.Sprintf("\"%v\"", path2))}
+			founds = append(founds, f)
 		}
 	}
 
- if len(founds) > 0 {
-   buf := &bytes.Buffer{}
+	if len(founds) > 0 {
+		buf := &bytes.Buffer{}
 
-   index := 0
+		index := 0
 
-   for _, f := range(founds) {
-     if index < f.offset1 {
-       buf.Write(src[index:f.offset1])
-     }
+		for _, f := range founds {
+			if index < f.offset1 {
+				buf.Write(src[index:f.offset1])
+			}
 
-     buf.Write(f.path2)
+			buf.Write(f.path2)
 
-     index = f.offset2
-   }
+			index = f.offset2
+		}
 
-   buf.Write(src[index:])
+		buf.Write(src[index:])
 
-	   return buf.Bytes(), nil
-  }
+		return buf.Bytes(), nil
+	}
 
-  return src, nil
+	return src, nil
 }
