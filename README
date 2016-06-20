@@ -1,7 +1,14 @@
 GO tool - replaces import pathes
 
+* usage:
+  replaceimports [flags] -f "original-path" -r "new-path" [path ...]
   
-  
+* flags:
+  -l    list files to be changed
+  -w    write result to (source) file instead of stdout
+  -d    display diffs instead of rewriting files
+  -f "original-path"   import path to find
+  -r "new-path"        import path to replace with
   
 fork of "https://github.com/bradfitz/goimports"
 
